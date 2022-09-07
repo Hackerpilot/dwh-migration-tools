@@ -192,7 +192,12 @@ class MacroProcessor:
             relative_output_path: relative path of the output file in the output_dir,
                 e.g., subdir/subdir_2/sample.sql.
         """
-        return self.expander.un_expand(relative_output_path, text)
+        text = self.expander.un_expand(relative_output_path, text)
+        expander = self.expander.choose_expander(relative_output_path)
+        if expander and relative_output_path in expander.unmapped and \
+                len(expander.unmapped[relative_output_path]) > 0:
+            text = f"-- NEED_VARS = {expander.unmapped[relative_output_path]}\n" + text
+        return text
 
 class MacrosSchema(Schema):
     macros = fields.Dict(

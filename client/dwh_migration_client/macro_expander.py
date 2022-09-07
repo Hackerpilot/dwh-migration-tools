@@ -31,6 +31,8 @@ class MacroExpander:
     generator: Optional[Callable[[str, str], str]]
     # function for custom un-expanding of macros
     un_generator: Optional[Callable[[str, str, str], str]]
+    # file name -> unmapped macros
+    unmapped: Dict[str, Set[str]]
 
     def __init__(
         self,
@@ -45,6 +47,7 @@ class MacroExpander:
         self.un_generator = un_generator
         self.mapping = mapping
         self.reverse = {}
+        self.unmapped = {}
 
     def _sanity_check(self, file_name: str) -> None:
         for replacement, originals in self.reverse[file_name].items():
@@ -62,6 +65,10 @@ class MacroExpander:
         if self.mapping and macro_name in self.mapping:
             generated = self.mapping[macro_name]
         elif self.generator:
+            if file_name in self.unmapped:
+                self.unmapped[file_name].union(macro_name)
+            else:
+                self.unmapped[file_name] = {macro_name}
             generated = self.generator(file_name, macro_name)
         else:
             logging.warn(
@@ -117,14 +124,11 @@ class MacroExpander:
 
 class MacroExpanderRouter:
     all_macros: Dict[str, MacroExpander]
-    # warnings and errors
-    errors: list[str]
 
     def __init__(self, all_macros: Dict[str, MacroExpander]) -> None:
         self.all_macros = all_macros
-        self.errors = []
 
-    def _choose_expander(self, file_name: str) -> Optional[MacroExpander]:
+    def choose_expander(self, file_name: str) -> Optional[MacroExpander]:
         chosen_expander = None
         chosen_pattern = None
         matches = []
@@ -143,18 +147,13 @@ class MacroExpanderRouter:
         return chosen_expander
 
     def expand(self, file_name: str, text: str) -> str:
-        expander = self._choose_expander(file_name)
+        expander = self.choose_expander(file_name)
         if expander:
             return expander.expand(file_name, text)
         return text
 
     def un_expand(self, file_name: str, text: str) -> str:
-        expander = self._choose_expander(file_name)
+        expander = self.choose_expander(file_name)
         if expander:
             return expander.un_expand(file_name, text)
         return text
-
-    def all_errors(self) -> List[str]:
-        return [
-            message for value in self.all_macros.values() for message in value.errors
-        ] + self.errors
