@@ -31,6 +31,7 @@ from dwh_migration_client.validation import (
     validated_file,
     validated_nonexistent_path,
 )
+from dwh_migration_client.aurigae_macros import aurigae_macro_router
 
 
 def start_translation(args: argparse.Namespace) -> None:
@@ -52,7 +53,7 @@ def start_translation(args: argparse.Namespace) -> None:
 
     if args.macros:
         try:
-            preprocessor = MacroProcessor(args)
+            preprocessor = MacroProcessor(args, aurigae_macro_router)
         except ValidationError:
             sys.exit(1)
     else:
