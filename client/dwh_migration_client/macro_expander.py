@@ -19,9 +19,14 @@ import logging
 from typing import Callable, Dict, List, Optional, Tuple, Set
 from fnmatch import fnmatch
 
+class RecordingLogger:
 
+    def warnLog(self, format_string, *args) -> None:
+        message = format_string.format(*args)
+        self.messages.append(message)
+        logging.warning(message)
 
-class MacroExpander:
+class MacroExpander(RecordingLogger):
 
     # macro name -> replacement
     mapping: Optional[Dict[str, str]]
@@ -48,15 +53,14 @@ class MacroExpander:
         self.mapping = mapping
         self.reverse = {}
         self.unmapped = {}
+        self.messages = []
 
     def _sanity_check(self, file_name: str) -> None:
         for replacement, originals in self.reverse[file_name].items():
             if len(originals[1]) > 1:
-                logging.warn(
-                    "The value '%s' was expanded from "
-                    + "the following macros: %s. Un-expansion will not "
-                    + "be accurate.", replacement, originals[1]
-                )
+                self.warnLog("The value '{0}' was expanded from "
+                    + "the following macros: {1}. Un-expansion will not "
+                    + "be accurate.", replacement, originals[1])
 
     def _substitution(self, file_name: str, match) -> str:
         macro_name = match.group(1)
@@ -71,8 +75,8 @@ class MacroExpander:
                 self.unmapped[file_name] = {macro_name}
             generated = self.generator(file_name, macro_name)
         else:
-            logging.warn(
-                "Could not expand '%s' as it is not "
+            self.warnLog(
+                "Could not expand '{0}' as it is not "
                 + "present in the mapping and no generator function was "
                 + "provided", full_match
             )
@@ -112,21 +116,22 @@ class MacroExpander:
                 result = re.subn(re.escape(replacement), original_text, text)
             if False: # Generates too many false positives
                 if result[1] > original[0]:
-                    logging.warning(
-                        "The string '%s' was un-expanded "
-                        + "to '%s' %s times, but was only the "
-                        + "result of an expansion %s time(s).",
+                    self.warnLog(
+                        "The string '{0}' was un-expanded "
+                        + "to '{1}' {2} times, but was only the "
+                        + "result of an expansion {3} time(s).",
                         replacement, original_text, result[1], original[0]
                     )
             text = result[0]
         return text
 
 
-class MacroExpanderRouter:
+class MacroExpanderRouter(RecordingLogger):
     all_macros: Dict[str, MacroExpander]
 
     def __init__(self, all_macros: Dict[str, MacroExpander]) -> None:
         self.all_macros = all_macros
+        self.messages = []
 
     def choose_expander(self, file_name: str) -> Optional[MacroExpander]:
         chosen_expander = None
@@ -140,8 +145,8 @@ class MacroExpanderRouter:
         if len(matches) == 0:
             return None
         if len(matches) > 1:
-            loggin.warn(
-                "File name %s matches multiple patterns. Arbitrarily choosing '%s'.",
+            self.warnLog(
+                "File name {0} matches multiple patterns. Arbitrarily choosing '{1}'.",
                 file_name, chosen_pattern
             )
         return chosen_expander
@@ -157,3 +162,9 @@ class MacroExpanderRouter:
         if expander:
             return expander.un_expand(file_name, text)
         return text
+
+    def all_messages(self) -> List[str]:
+        result = self.messages
+        for _, expander in self.all_macros.items():
+            result = result + expander.messages
+        return result
